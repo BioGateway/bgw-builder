@@ -27,6 +27,7 @@ type Entity struct {
 	refScore        int
 	annotationScore float64
 	entityType      string
+	pubMeds         []string
 }
 
 var prefLabelRT = "<http://www.w3.org/2004/02/skos/core#prefLabel>"
@@ -34,17 +35,49 @@ var definitionRT = "<http://www.w3.org/2004/02/skos/core#definition>"
 var synonymRT = "<http://www.w3.org/2004/02/skos/core#altLabel>"
 var instanceRT = "<http://schema.org/evidenceOrigin>"
 var evidenceRT = "<http://schema.org/evidenceLevel>"
-var taxonRT = "< http://purl.obolibrary.org/obo/RO_0000052>"
+var taxonRT = "<http://purl.obolibrary.org/obo/RO_0000052>"
 var typeRT = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>"
+var pubMedRT = "<http://semanticscience.org/resource/SIO_000772>"
+
+var taxonPrefix = "http://purl.obolibrary.org/obo/NCBITaxon_"
+
 var threadCount = 10
 
 // altLabelRT := "http://www.w3.org/2004/02/skos/core#altLabel"
 var classURI = "<http://www.w3.org/2002/07/owl#Class>"
 
+/*
+var taxa = []string{
+	"3055",
+	"3702",
+	"4577",
+	"6239",
+	"7227",
+	"7955",
+	"9031",
+	"9606",
+	"9615",
+	"9823",
+	"9913",
+	"9986",
+	"10090",
+	"10116",
+	"36329",
+	"39947",
+	"44689",
+	"284812",
+	"367110",
+	"559292",
+}
+*/
+
+var taxa = []string{
+	"9606",
+}
+
 func main() {
 
-	fmt.Print("Hello, Go!\n")
-	// f, err := os.Open("test-prot.nt")
+	fmt.Print("MetaDB Generator started...\n")
 
 	mongoURI := "mongodb://localhost:27027"
 	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(mongoURI))
@@ -56,12 +89,17 @@ func main() {
 			panic(err)
 		}
 	}()
-	parseGeneProt("9606", "prot", client)
-	parseGeneProt("9606", "gene", client)
+
+	for _, taxon := range taxa {
+		fmt.Println("Parsing RDFs for taxon", taxon)
+		parseEntityRDF(taxon, "prot", client)
+		parseEntityRDF(taxon, "gene", client)
+	}
+
 	fmt.Printf("Done!")
 }
 
-func parseGeneProt(taxon string, graph string, client *mongo.Client) {
+func parseEntityRDF(taxon string, graph string, client *mongo.Client) {
 	f, err := os.Open("rdf/" + graph + "/" + taxon + ".nt")
 	if err != nil {
 		fmt.Print("Error opening file: ", err)
@@ -134,6 +172,21 @@ func parseGeneProt(taxon string, graph string, client *mongo.Client) {
 					instances: []string{instanceURI},
 				}
 			}
+		} else if predicate == pubMedRT {
+			pubMedURI := removeLTGT(value)
+			if entry, ok := entityMap[uri]; ok {
+				if len(entry.pubMeds) > 0 {
+					entry.pubMeds = append(entry.pubMeds, pubMedURI)
+				} else {
+					entry.pubMeds = []string{pubMedURI}
+				}
+				entityMap[uri] = entry
+			} else {
+				entityMap[uri] = Entity{
+					uri:     uri,
+					pubMeds: []string{pubMedURI},
+				}
+			}
 		} else if predicate == evidenceRT {
 			if entry, ok := entityMap[uri]; ok {
 				if floatValue, err := strconv.ParseFloat(value, 64); err == nil {
@@ -186,7 +239,7 @@ func parseGeneProt(taxon string, graph string, client *mongo.Client) {
 	for index, list := range entities {
 		go func(i int, list []Entity) {
 			defer waitGroup.Done()
-			insertEntitiesToDB(list, client, i, graph)
+			insertEntitiesToDB(list, client, i, graph, taxon)
 		}(index, list)
 	}
 	waitGroup.Wait()
@@ -196,10 +249,25 @@ func removeLTGT(value string) string {
 	return strings.Replace(strings.Replace(value, ">", "", 1), "<", "", 1)
 }
 
-func insertEntitiesToDB(entities []Entity, client *mongo.Client, index int, graph string) {
-	// updateOptions := options.Update().SetUpsert(true)
-	insertOptions := options.InsertOne().SetBypassDocumentValidation(true)
+/*
+ */
+func insertEntitiesToDB(entities []Entity, client *mongo.Client, index int, graph string, taxon string) {
+	updateOptions := options.Update().SetUpsert(true)
+	// insertOptions := options.InsertOne().SetBypassDocumentValidation(true)
 	entityDB := client.Database("metadb").Collection(graph)
+	dbIndices := []mongo.IndexModel{
+		{Keys: bson.M{"uri": 1}},
+		{Keys: bson.M{"lcLabel": 1}},
+		{Keys: bson.M{"lcSynonyms": 1}},
+		{Keys: bson.M{"refScore": 1}},
+		{Keys: bson.M{"taxon": 1}},
+		{Keys: bson.M{"definition": "text"}},
+	}
+
+	_, err := entityDB.Indexes().CreateMany(context.TODO(), dbIndices)
+	if err != nil {
+		panic(err)
+	}
 	entityNumber := 0
 	timestamp := time.Now().Unix()
 	for _, entity := range entities {
@@ -217,9 +285,15 @@ func insertEntitiesToDB(entities []Entity, client *mongo.Client, index int, grap
 			"synonyms":        entity.synonyms,
 			"lcSynonyms":      lcSynonyms,
 			"instances":       entity.instances,
+			"taxon":           taxonPrefix + taxon,
+			// "pubMedRefs":      entity.pubMeds,
+			"refScore": len(entity.pubMeds),
 		}
-		_, err := entityDB.InsertOne(
-			context.TODO(), doc, insertOptions)
+		_, err := entityDB.UpdateOne(
+			context.TODO(),
+			bson.M{"uri": entity.uri},
+			bson.M{"$set": doc},
+			updateOptions)
 		if err != nil {
 			panic(err)
 		}
@@ -227,7 +301,7 @@ func insertEntitiesToDB(entities []Entity, client *mongo.Client, index int, grap
 			nowTime := time.Now().Unix()
 			duration := nowTime - timestamp
 			timestamp = nowTime
-			fmt.Println("Thread", index, "Inserted", entityNumber, "into mongoDB graph", graph, "in", duration, "seconds")
+			fmt.Println(taxon, "Thread", index, "Inserted", entityNumber, "into mongoDB graph", graph, "in", duration, "seconds")
 		}
 	}
 }
