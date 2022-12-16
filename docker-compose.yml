@@ -1,0 +1,11 @@
+version: '3.9'
+
+services:
+  mongo:
+    container_name: metadb-mongo
+    restart: always
+    image: mongo:latest
+    ports:
+      - 27027:27017
+    volumes:
+      - ./db/:/data/db
