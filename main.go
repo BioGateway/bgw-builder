@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 type Entity struct {
@@ -30,8 +31,12 @@ type Entity struct {
 
 var prefLabelRT = "<http://www.w3.org/2004/02/skos/core#prefLabel>"
 var definitionRT = "<http://www.w3.org/2004/02/skos/core#definition>"
+var synonymRT = "<http://www.w3.org/2004/02/skos/core#altLabel>"
+var instanceRT = "<http://schema.org/evidenceOrigin>"
 var evidenceRT = "<http://schema.org/evidenceLevel>"
+var taxonRT = "< http://purl.obolibrary.org/obo/RO_0000052>"
 var typeRT = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#type>"
+var threadCount = 10
 
 // altLabelRT := "http://www.w3.org/2004/02/skos/core#altLabel"
 var classURI = "<http://www.w3.org/2002/07/owl#Class>"
@@ -65,7 +70,7 @@ func parseGeneProt(taxon string, graph string, client *mongo.Client) {
 	// protDB := client.Database("metadb").Collection("prot")
 	lineNumber := 0
 	scanner := bufio.NewScanner(f)
-	protMap := make(map[string]Entity)
+	entityMap := make(map[string]Entity)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -80,44 +85,73 @@ func parseGeneProt(taxon string, graph string, client *mongo.Client) {
 			continue
 		}
 		if predicate == prefLabelRT {
-			if entry, ok := protMap[uri]; ok {
+			if entry, ok := entityMap[uri]; ok {
 				entry.prefLabel = value
 				entry.lcLabel = strings.ToLower(value)
-				protMap[uri] = entry
+				entityMap[uri] = entry
 			} else {
-				protMap[uri] = Entity{
+				entityMap[uri] = Entity{
 					uri:       uri,
 					prefLabel: value,
 					lcLabel:   strings.ToLower(value),
 				}
 			}
 		} else if predicate == definitionRT {
-			if entry, ok := protMap[uri]; ok {
+			if entry, ok := entityMap[uri]; ok {
 				entry.definition = value
-				protMap[uri] = entry
+				entityMap[uri] = entry
 			} else {
-				protMap[uri] = Entity{
+				entityMap[uri] = Entity{
 					uri:        uri,
 					definition: value}
 			}
+		} else if predicate == synonymRT {
+			if entry, ok := entityMap[uri]; ok {
+				if len(entry.synonyms) > 0 {
+					entry.synonyms = append(entry.synonyms, value)
+				} else {
+					entry.synonyms = []string{value}
+				}
+				entityMap[uri] = entry
+			} else {
+				entityMap[uri] = Entity{
+					uri:      uri,
+					synonyms: []string{value},
+				}
+			}
+		} else if predicate == instanceRT {
+			instanceURI := removeLTGT(value)
+			if entry, ok := entityMap[uri]; ok {
+				if len(entry.instances) > 0 {
+					entry.instances = append(entry.instances, instanceURI)
+				} else {
+					entry.instances = []string{instanceURI}
+				}
+				entityMap[uri] = entry
+			} else {
+				entityMap[uri] = Entity{
+					uri:       uri,
+					instances: []string{instanceURI},
+				}
+			}
 		} else if predicate == evidenceRT {
-			if entry, ok := protMap[uri]; ok {
+			if entry, ok := entityMap[uri]; ok {
 				if floatValue, err := strconv.ParseFloat(value, 64); err == nil {
 					entry.annotationScore = floatValue
-					protMap[uri] = entry
+					entityMap[uri] = entry
 				}
 
 			} else {
-				protMap[uri] = Entity{
+				entityMap[uri] = Entity{
 					uri:        uri,
 					definition: value}
 			}
 		} else if predicate == typeRT {
 			if value == classURI {
-				if entry, ok := protMap[uri]; ok {
+				if entry, ok := entityMap[uri]; ok {
 					entry.entityType = removeLTGT(value)
 				} else {
-					protMap[uri] = Entity{
+					entityMap[uri] = Entity{
 						uri:        uri,
 						entityType: removeLTGT(value)}
 				}
@@ -130,19 +164,18 @@ func parseGeneProt(taxon string, graph string, client *mongo.Client) {
 			fmt.Println("Parsed line number", lineNumber)
 		}
 	}
-	threadCount := 10
-	entitiesPerThread := (len(protMap) / threadCount) + 1
+	entitiesPerThread := (len(entityMap) / threadCount) + 1
 	entities := make([][]Entity, threadCount)
 
 	for index, _ := range entities {
 		entities[index] = make([]Entity, entitiesPerThread)
 		i := 0
-		for key, prot := range protMap {
+		for key, prot := range entityMap {
 			if i > entitiesPerThread-1 {
 				continue
 			}
 			entities[index][i] = prot
-			delete(protMap, key)
+			delete(entityMap, key)
 			i++
 		}
 	}
@@ -164,26 +197,37 @@ func removeLTGT(value string) string {
 }
 
 func insertEntitiesToDB(entities []Entity, client *mongo.Client, index int, graph string) {
-	updateOptions := options.Update().SetUpsert(true)
-	protDB := client.Database("metadb").Collection(graph)
-	protNumber := 0
-	for _, prot := range entities {
-		protNumber++
-		_, err := protDB.UpdateOne(
-			context.TODO(),
-			bson.D{{"uri", prot.uri}},
-			bson.D{{"$set", bson.D{
-				{"uri", prot.uri},
-				{"prefLabel", prot.prefLabel},
-				{"lcLabel", prot.lcLabel},
-				{"definition", prot.definition},
-				{"annotationScore", prot.annotationScore},
-			}}}, updateOptions)
+	// updateOptions := options.Update().SetUpsert(true)
+	insertOptions := options.InsertOne().SetBypassDocumentValidation(true)
+	entityDB := client.Database("metadb").Collection(graph)
+	entityNumber := 0
+	timestamp := time.Now().Unix()
+	for _, entity := range entities {
+		entityNumber++
+		lcSynonyms := []string{}
+		for _, v := range entity.synonyms {
+			lcSynonyms = append(lcSynonyms, strings.ToLower(v))
+		}
+		doc := bson.M{
+			"uri":             entity.uri,
+			"prefLabel":       entity.prefLabel,
+			"lcLabel":         entity.lcLabel,
+			"definition":      entity.definition,
+			"annotationScore": entity.annotationScore,
+			"synonyms":        entity.synonyms,
+			"lcSynonyms":      lcSynonyms,
+			"instances":       entity.instances,
+		}
+		_, err := entityDB.InsertOne(
+			context.TODO(), doc, insertOptions)
 		if err != nil {
 			panic(err)
 		}
-		if protNumber%1000 == 0 {
-			fmt.Println(graph, "Thread", index, "Inserted", protNumber, "into mongoDB")
+		if entityNumber%1000 == 0 {
+			nowTime := time.Now().Unix()
+			duration := nowTime - timestamp
+			timestamp = nowTime
+			fmt.Println("Thread", index, "Inserted", entityNumber, "into mongoDB graph", graph, "in", duration, "seconds")
 		}
 	}
 }
