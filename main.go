@@ -7,6 +7,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 	"os"
 	"strconv"
 	"strings"
@@ -91,9 +93,10 @@ func main() {
 	}()
 
 	for _, taxon := range taxa {
+		parseGOFile("go/go-basic.obo", client)
 		fmt.Println("Parsing RDFs for taxon", taxon)
-		parseEntityRDF(taxon, "prot", client)
-		parseEntityRDF(taxon, "gene", client)
+		// parseEntityRDF(taxon, "prot", client)
+		//parseEntityRDF(taxon, "gene", client)
 	}
 
 	fmt.Printf("Done!")
@@ -245,12 +248,131 @@ func parseEntityRDF(taxon string, graph string, client *mongo.Client) {
 	waitGroup.Wait()
 }
 
+func parseGOFile(filePath string, client *mongo.Client) {
+	graph := "goall"
+	f, err := os.Open("rdf/" + filePath)
+	if err != nil {
+		fmt.Print("Error opening file: ", err)
+	}
+	defer f.Close()
+	// protDB := client.Database("metadb").Collection("prot")
+	lineNumber := 0
+	scanner := bufio.NewScanner(f)
+	entityMap := make(map[string]Entity)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line == "[Term]" {
+			scanner.Scan()
+			idLine := scanner.Text()
+			scanner.Scan()
+			nameLine := scanner.Text()
+			scanner.Scan()
+			namespaceLine := scanner.Text()
+			id := strings.Replace(idLine, "id: ", "", 1)
+			name := strings.Replace(nameLine, "name: ", "", 1)
+			namespace := strings.Replace(namespaceLine, "namespace: ", "", 1)
+			uri := "http://purl.obolibrary.org/obo/" + strings.Replace(id, ":", "_", 1)
+			entityMap[uri] = Entity{
+				uri:       uri,
+				prefLabel: name,
+				lcLabel:   strings.ToLower(name),
+				// Replacing the underscore with space, and capitalizing each word.
+				definition: cases.Title(language.English, cases.Compact).String(strings.Replace(namespace, "_", " ", 1)),
+			}
+		}
+		lineNumber++
+	}
+
+	entitiesPerThread := (len(entityMap) / threadCount) + 1
+	entities := make([][]Entity, threadCount)
+
+	for index, _ := range entities {
+		entities[index] = make([]Entity, entitiesPerThread)
+		i := 0
+		for key, prot := range entityMap {
+			if i > entitiesPerThread-1 {
+				continue
+			}
+			entities[index][i] = prot
+			delete(entityMap, key)
+			i++
+		}
+	}
+
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(threadCount)
+
+	for index, list := range entities {
+		go func(i int, list []Entity) {
+			defer waitGroup.Done()
+			insertSimpleEntitiesToDB(list, client, i, graph)
+		}(index, list)
+	}
+	waitGroup.Wait()
+
+}
+
 func removeLTGT(value string) string {
 	return strings.Replace(strings.Replace(value, ">", "", 1), "<", "", 1)
 }
 
 /*
  */
+
+func insertSimpleEntitiesToDB(entities []Entity, client *mongo.Client, index int, graph string) {
+	updateOptions := options.Update().SetUpsert(true)
+	// insertOptions := options.InsertOne().SetBypassDocumentValidation(true)
+	entityDB := client.Database("metadb").Collection(graph)
+	dbIndices := []mongo.IndexModel{
+		{Keys: bson.M{"uri": 1}},
+		{Keys: bson.M{"lcLabel": 1}},
+		{Keys: bson.M{"lcSynonyms": 1}},
+		{Keys: bson.M{"refScore": 1}},
+		{Keys: bson.M{"definition": "text"}},
+	}
+
+	_, err := entityDB.Indexes().CreateMany(context.TODO(), dbIndices)
+	if err != nil {
+		panic(err)
+	}
+	entityNumber := 0
+	timestamp := time.Now().Unix()
+	for _, entity := range entities {
+		entityNumber++
+		lcSynonyms := []string{}
+		for _, v := range entity.synonyms {
+			lcSynonyms = append(lcSynonyms, strings.ToLower(v))
+		}
+		doc := bson.M{
+			"uri":             entity.uri,
+			"prefLabel":       entity.prefLabel,
+			"lcLabel":         entity.lcLabel,
+			"definition":      entity.definition,
+			"annotationScore": entity.annotationScore,
+			"synonyms":        entity.synonyms,
+			"lcSynonyms":      lcSynonyms,
+			"instances":       entity.instances,
+			// "pubMedRefs":      entity.pubMeds,
+			"refScore": len(entity.pubMeds),
+		}
+		_, err := entityDB.UpdateOne(
+			context.TODO(),
+			bson.M{"uri": entity.uri},
+			bson.M{"$set": doc},
+			updateOptions)
+		if err != nil {
+			panic(err)
+		}
+		if entityNumber%1000 == 0 {
+			nowTime := time.Now().Unix()
+			duration := nowTime - timestamp
+			timestamp = nowTime
+			fmt.Println("Thread", index, "Inserted", entityNumber, "into mongoDB graph", graph, "in", duration, "seconds")
+		}
+	}
+}
+
 func insertEntitiesToDB(entities []Entity, client *mongo.Client, index int, graph string, taxon string) {
 	updateOptions := options.Update().SetUpsert(true)
 	// insertOptions := options.InsertOne().SetBypassDocumentValidation(true)
