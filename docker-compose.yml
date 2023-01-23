@@ -2,7 +2,7 @@ version: '3.9'
 
 services:
   mongo:
-    container_name: metadb-mongo
+    container_name: metadb-updater-db
     restart: always
     image: mongo:latest
     ports:
