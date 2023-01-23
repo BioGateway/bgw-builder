@@ -275,7 +275,7 @@ func parseEntityRDF(taxon string, graph string, prefix string, rdfPath string, r
 		}
 
 		if lineNumber%1000 == 0 {
-			fmt.Println("Parsed line number", lineNumber)
+			fmt.Printf("[%s][%s] Parsed line number %d\n", taxon, graph, lineNumber)
 		}
 	}
 
@@ -399,7 +399,7 @@ func parseStatementRDF(taxon string, graph string, prefix string, rdfPath string
 			}
 		}
 		if lineNumber%1000 == 0 {
-			fmt.Println("Parsed line number", lineNumber)
+			fmt.Printf("[%s][%s] Parsed line number %d\n", taxon, graph, lineNumber)
 		}
 	}
 	entitiesPerThread := (len(statementMap) / threadCount) + 1
@@ -457,7 +457,7 @@ func parseStatementRefScore(taxon string, graph string, prefix string, rdfPath s
 			refScores[object] += 1
 		}
 		if lineNumber%1000 == 0 {
-			fmt.Println("[RefScore] Parsed line number", lineNumber)
+			fmt.Printf("[%s][%s] Parsed line number %d\n", taxon, graph, lineNumber)
 		}
 	}
 }
@@ -512,7 +512,7 @@ func parseGeneOntology(rdfPath string, refScores map[string]int, client *mongo.C
 			}
 		}
 		if lineNumber%1000 == 0 {
-			fmt.Println("Parsed line number", lineNumber)
+			fmt.Println("[GeneOntology] Parsed line number", lineNumber)
 		}
 	}
 	fmt.Println("Parsing complete!")
@@ -724,7 +724,8 @@ func insertEntitiesToDB(entities []Entity, client *mongo.Client, index int, grap
 			nowTime := time.Now().Unix()
 			duration := nowTime - timestamp
 			timestamp = nowTime
-			fmt.Println(taxon, "Thread", index, "Inserted", entityNumber, "into mongoDB graph", graph, "in", duration, "seconds")
+			fmt.Printf("[%s][%s][T%d] Inserted entry %d in %d seconds\n", taxon, graph, index, entityNumber, duration)
+			// fmt.Println(taxon, "Thread", index, "Inserted", entityNumber, "into mongoDB graph", graph, "in", duration, "seconds")
 		}
 	}
 }
