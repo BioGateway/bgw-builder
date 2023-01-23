@@ -70,6 +70,7 @@ var threadCount = 10
 // altLabelRT := "http://www.w3.org/2004/02/skos/core#altLabel"
 var classURI = "<http://www.w3.org/2002/07/owl#Class>"
 
+/*
 var taxa = []string{
 	"3055",
 	"3702",
@@ -92,10 +93,14 @@ var taxa = []string{
 	"367110",
 	"559292",
 }
+*/
 
-//var taxa = []string{
-//	"9606",
-//}
+/*
+var taxa = []string{
+	"9606",
+}*/
+
+var taxa = []string{}
 
 func main() {
 	if len(os.Args) < 2 {
@@ -137,6 +142,9 @@ func main() {
 		parseStatementRDF(taxon, "prot2prot", "http://rdf.biogateway.eu/prot-prot/uniprot!", rdfPath, client)
 
 	}
+	// We only have diseases for humans
+	parseStatementRefScore("9606", "gene2phen", "http://rdf.biogateway.eu/gene-phen/", rdfPath, refScores)
+	parseDiseases(rdfPath, refScores, client)
 
 	// Depends on parsing prot2bp, prot2cc and prot2mf first, to get accurate refScores.
 	parseGeneOntology(rdfPath, refScores, client)
@@ -544,6 +552,79 @@ func parseGeneOntology(rdfPath string, refScores map[string]int, client *mongo.C
 	waitGroup.Wait()
 }
 
+func parseDiseases(rdfPath string, refScores map[string]int, client *mongo.Client) {
+	// TODO: This should not be hardcoded if 22 refers to a year.
+	f, err := os.Open(rdfPath + "/omim/omim-22.nt")
+	if err != nil {
+		fmt.Print("Error opening file: ", err)
+	}
+	defer f.Close()
+	lineNumber := 0
+	scanner := bufio.NewScanner(f)
+	entityMap := make(map[string]SimpleEntity)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		lineNumber++
+		components := strings.SplitN(line, " ", 3)
+		if len(components) < 3 {
+			continue
+		}
+		sub := components[0]
+		predicate := components[1]
+		value := cleanRDFString(components[2])
+
+		uri := removeLTGT(sub)
+		if !strings.HasPrefix(uri, "http://purl.bioontology.org/ontology/") {
+			continue
+		}
+
+		if predicate == prefLabelRT {
+			if entry, ok := entityMap[uri]; ok {
+				entry.prefLabel = value
+				entry.lcLabel = strings.ToLower(value)
+				entityMap[uri] = entry
+			} else {
+				entityMap[uri] = SimpleEntity{
+					uri:       uri,
+					prefLabel: value,
+					lcLabel:   strings.ToLower(value),
+				}
+			}
+		}
+		if lineNumber%1000 == 0 {
+			fmt.Println("[Omim] Parsed line number", lineNumber)
+		}
+	}
+	fmt.Println("Parsing complete!")
+	entitiesPerThread := (len(entityMap) / threadCount) + 1
+	entities := make([][]SimpleEntity, threadCount)
+
+	for index, _ := range entities {
+		entities[index] = make([]SimpleEntity, entitiesPerThread)
+		i := 0
+		for key, prot := range entityMap {
+			if i > entitiesPerThread-1 {
+				continue
+			}
+			entities[index][i] = prot
+			delete(entityMap, key)
+			i++
+		}
+	}
+
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(threadCount)
+
+	for index, list := range entities {
+		go func(i int, list []SimpleEntity) {
+			defer waitGroup.Done()
+			insertSimpleEntitiesToDB(list, client, i, "omim", refScores)
+		}(index, list)
+	}
+	waitGroup.Wait()
+}
+
 func removeLTGT(value string) string {
 	return strings.Replace(strings.Replace(value, ">", "", 1), "<", "", 1)
 }
@@ -621,6 +702,7 @@ func insertSimpleEntitiesToDB(entities []SimpleEntity, client *mongo.Client, ind
 	for _, entity := range entities {
 		entityNumber++
 		refScore := refScores[entity.uri]
+
 		doc := bson.M{
 			"uri":        entity.uri,
 			"prefLabel":  entity.prefLabel,
@@ -732,7 +814,7 @@ func insertEntitiesToDB(entities []Entity, client *mongo.Client, index int, grap
 
 func cleanRDFString(input string) string {
 	components := strings.Split(input, "^^")
-	value := strings.Replace(strings.Replace(components[0], "\"", "", 2), " .", "", 1)
+	value := strings.Replace(strings.Replace(strings.Replace(components[0], "\"", "", 2), " .", "", 1), "@en", "", 1)
 	return value
 }
 
