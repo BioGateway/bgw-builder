@@ -70,7 +70,6 @@ var threadCount = 10
 // altLabelRT := "http://www.w3.org/2004/02/skos/core#altLabel"
 var classURI = "<http://www.w3.org/2002/07/owl#Class>"
 
-/*
 var taxa = []string{
 	"3055",
 	"3702",
@@ -93,14 +92,11 @@ var taxa = []string{
 	"367110",
 	"559292",
 }
-*/
 
 /*
 var taxa = []string{
 	"9606",
 }*/
-
-var taxa = []string{}
 
 func main() {
 	if len(os.Args) < 2 {
