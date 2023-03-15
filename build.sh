@@ -17,5 +17,5 @@ sed 's/#version#/'$1'/' docker-template.yml > target/docker-compose.yml
 
 mv target/ bgw-$1
 echo "Packaging..."
-tar cvfz biogateway-$1.tgz bgw-$1/
+sudo tar cvfz biogateway-$1.tgz bgw-$1/
 echo "Tarball complete!"
