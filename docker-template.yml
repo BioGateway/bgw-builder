@@ -1,0 +1,64 @@
+version: '3.3'
+services:
+  virtuoso:
+    image: tenforce/virtuoso:latest
+    environment:
+      DBA_PASSWORD: "angry-TRAVEL-share"
+      SPARQL_UPDATE: "true"
+      DEFAULT_GRAPH: "http:/rdf.biogateway.eu/graph"
+      VIRT_Database_Striping: "1"
+      VIRT_Parameters_ThreadsPerQuery: "12"
+      VIRT_Parameters_ThreadCleanupInterval: "0"
+      VIRT_Parameters_ResourcesCleanupInterval: "0"
+      VIRT_Parameters_NumberOfBuffers: "5450000"
+      VIRT_Parameters_MaxDirtyBuffers: "4000000"
+      VIRT_Striping_Segment1: "1536M, ../db/seg1-1.db, ../db/seg1-2.db, ../db/seg1-3.db, ../db/seg1-4.db"
+      VIRT_Striping_Segment2: "1536M, ../db/seg2-1.db, ../db/seg2-2.db, ../db/seg2-3.db, ../db/seg2-4.db"
+      VIRT_SPARQL_MaxQueryCostEstimationTime: "0"
+      VIRT_SPARQL_MaxQueryExecutionTime: "3600"
+      VIRT_SPARQL_ResultSetMaxRows: "20000000"
+      VIRT_SPARQL_DefaultQuery: "SELECT ?graph (COUNT (*) AS ?triples) WHERE {GRAPH ?graph {?s ?p ?o}} ORDER BY ?graph"
+      VIRTUAL_HOST: #version#.biogateway.eu
+      LETSENCRYPT_HOST: #version#.biogateway.eu
+      VIRTUAL_PORT: 8890
+    volumes:
+      - /data/docker/bgw-3402/vos/:/data
+    ports:
+      - "#version#1:1111"
+    networks:
+      nginx:
+    restart: always
+  metadb-app:
+    container_name: biogw-metadb-app
+    image: metadb-server
+    depends_on:
+      - mongo
+    restart: always
+    environment:
+      VIRTUAL_HOST: #version#.meta.biogateway.eu
+      LETSENCRYPT_HOST: #version#.meta.biogateway.eu
+      DB_NAME: metadb
+      VIRTUAL_PORT: 3001
+    command:
+      - npm
+      - "run"
+      - "start"
+    networks:
+      nginx:
+      net:
+  mongo:
+    container_name: biogw-metadb-mongo
+    restart: always
+    image: mongo
+    expose:
+      - 27017
+    volumes:
+      - ./metadb/:/data/db
+      - ./import/:/import
+    networks:
+      nginx:
+      net:
+networks:
+  net:
+  nginx:
+    external: true
