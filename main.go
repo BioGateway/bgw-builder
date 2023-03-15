@@ -128,7 +128,7 @@ func main() {
 	// Proteins and Genes for all taxa
 	for _, taxon := range taxa {
 		fmt.Println("Parsing RDFs for taxon", taxon)
-		parseEntityRDF(taxon, "prot", "http://rdf.biogateway.eu/prot", rdfPath, refScores, client)
+		parseEntityRDF(taxon, "prot", "http://uniprot.org/uniprot/", rdfPath, refScores, client)
 		parseEntityRDF(taxon, "gene", "http://rdf.biogateway.eu/gene", rdfPath, refScores, client)
 
 		parseStatementRefScore(taxon, "prot2bp", "http://rdf.biogateway.eu/prot-onto/", rdfPath, refScores)
