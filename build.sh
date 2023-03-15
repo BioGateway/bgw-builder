@@ -10,7 +10,7 @@ cp -r $2 target/vos &
 
 ./metadb-go -path=$2/uploads -t=$3
 docker compose down
-sudo cp db/ target/metadb
+sudo cp -r db/ target/metadb
 echo "MetaDB build complete!"
 
 sed 's/#version#/'$1'/' docker-template.yml > target/docker-compose.yml
