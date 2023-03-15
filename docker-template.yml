@@ -23,13 +23,10 @@ services:
       VIRTUAL_PORT: 8890
     volumes:
       - /data/docker/bgw-3402/vos/:/data
-    ports:
-      - "#version#1:1111"
     networks:
       nginx:
     restart: always
   metadb-app:
-    container_name: biogw-metadb-app
     image: metadb-server
     depends_on:
       - mongo
@@ -47,7 +44,6 @@ services:
       nginx:
       net:
   mongo:
-    container_name: biogw-metadb-mongo
     restart: always
     image: mongo
     expose:
