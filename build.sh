@@ -16,7 +16,7 @@ cp -r $2 target/vos &
 ./metadb-go -path=$2/uploads -t=$3
 docker compose down
 sudo cp -r db/ target/metadb
-sudo chown -R :docker target/
+sudo chown -R $USER:docker target/
 sudo chmod -R g+rw target/
 echo "MetaDB build complete!"
 
