@@ -3,7 +3,7 @@ services:
   virtuoso:
     image: tenforce/virtuoso:latest
     environment:
-      DBA_PASSWORD: "angry-TRAVEL-share"
+      DBA_PASSWORD: "aqua-graft-running"
       SPARQL_UPDATE: "true"
       DEFAULT_GRAPH: "http:/rdf.biogateway.eu/graph"
       VIRT_Database_Striping: "1"
