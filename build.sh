@@ -1,4 +1,9 @@
 #!/bin/bash
+if [ "$#" -lt 3 ]; then
+  echo "Error: Less than 3 arguments provided"
+  exit 1
+fi
+
 sudo rm -r db/
 sudo rm -r target/
 sudo rm -r bgw-*/
@@ -11,6 +16,7 @@ cp -r $2 target/vos &
 ./metadb-go -path=$2/uploads -t=$3
 docker compose down
 sudo cp -r db/ target/metadb
+sudo chown -R :docker target/metadb
 echo "MetaDB build complete!"
 
 sed 's/#version#/'$1'/' docker-template.yml > target/docker-compose.yml
