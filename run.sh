@@ -4,4 +4,4 @@ if [ "$#" -lt 2 ]; then
   exit 1
 fi
 rm build.log
-sudo ./build.sh $1 $2 20 > build.log &
+sudo ./build.sh $1 $2 20 >| build.log &
