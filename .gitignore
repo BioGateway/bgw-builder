@@ -4,3 +4,7 @@
 /uploads/
 /bgw-*/
 /target/
+biogateway-*.tgz
+build.log
+/metadb-go
+/go.sum
