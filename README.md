@@ -7,6 +7,13 @@ It will create a `docker compose` configuration for the following:
 
 # Installation
 
+Clone the repository with:
+```
+git clone git@github.com:BioGateway/bgw-builder.git
+
+cd bgw-builder/
+```
+
 Run the following to fetch dependencies and build the GoLang program.
 ```
 go get
