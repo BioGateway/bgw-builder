@@ -27,7 +27,7 @@ services:
       nginx:
     restart: always
   metadb-app:
-    image: metadb-server
+    image: metadb-server:23.3
     depends_on:
       - mongo
     restart: always
