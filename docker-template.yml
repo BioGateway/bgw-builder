@@ -22,12 +22,12 @@ services:
       LETSENCRYPT_HOST: #version#.biogateway.eu
       VIRTUAL_PORT: 8890
     volumes:
-      - /data/docker/bgw-3402/vos/:/data
+      - ./vos/:/data
     networks:
       nginx:
     restart: always
   metadb-app:
-    image: metadb-server
+    image: metadb-server:23.3
     depends_on:
       - mongo
     restart: always
