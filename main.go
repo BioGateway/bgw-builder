@@ -549,8 +549,7 @@ func parseGeneOntology(rdfPath string, refScores map[string]int, client *mongo.C
 }
 
 func parseDiseases(rdfPath string, refScores map[string]int, client *mongo.Client) {
-	// TODO: This should not be hardcoded if 22 refers to a year.
-	f, err := os.Open(rdfPath + "/omim/omim-22.nt")
+	f, err := os.Open(rdfPath + "/omim/omim.nt")
 	if err != nil {
 		fmt.Print("Error opening file: ", err)
 	}
