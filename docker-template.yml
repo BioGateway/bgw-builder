@@ -1,11 +1,12 @@
 version: '3.3'
 services:
   virtuoso:
-    image: tenforce/virtuoso:latest
+    image: redpencil/virtuoso:latest
     environment:
       DBA_PASSWORD: "aqua-graft-running"
       SPARQL_UPDATE: "true"
       DEFAULT_GRAPH: "http:/rdf.biogateway.eu/graph"
+      ENABLE_CORS: "true"
       VIRT_Database_Striping: "1"
       VIRT_Parameters_ThreadsPerQuery: "12"
       VIRT_Parameters_ThreadCleanupInterval: "0"

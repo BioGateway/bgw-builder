@@ -12,8 +12,10 @@ docker compose up -d
 
 mkdir -p target/
 cp -r $2 target/vos &
+vospath="$2"
+vospath="${vospath%/}"
 
-./metadb-go -path=$2/uploads -t=$3
+./metadb-go -path=$vospath/uploads -t=$3
 docker compose down
 sudo cp -r db/ target/metadb
 sudo chown -R $USER:docker target/

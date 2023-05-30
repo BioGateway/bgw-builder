@@ -106,6 +106,7 @@ func main() {
 	flag.StringVar(&rdfPath, "path", "uploads", "rdf path")
 	flag.IntVar(&threadCount, "t", 10, "thread count")
 	flag.Parse()
+	rdfPath = strings.TrimRight(rdfPath, "/")
 
 	fmt.Print("MetaDB Generator started...\n")
 
