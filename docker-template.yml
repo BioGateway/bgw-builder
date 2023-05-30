@@ -1,7 +1,7 @@
 version: '3.3'
 services:
   virtuoso:
-    image: redpencil/virtuoso:latest
+    image: tenforce/virtuoso:latest
     environment:
       DBA_PASSWORD: "aqua-graft-running"
       SPARQL_UPDATE: "true"
