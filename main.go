@@ -2,17 +2,19 @@ package main
 
 import (
 	"bufio"
+	"compress/gzip"
 	"context"
 	"flag"
 	"fmt"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type Entity struct {
@@ -93,10 +95,9 @@ var taxa = []string{
 	"559292",
 }
 
-/*
-var taxa = []string{
-	"9606",
-}*/
+// var taxa = []string{
+// 	"9606",
+// }
 
 func main() {
 	if len(os.Args) < 2 {
@@ -150,14 +151,20 @@ func main() {
 }
 
 func parseEntityRDF(taxon string, graph string, prefix string, rdfPath string, refScores map[string]int, client *mongo.Client) {
-	f, err := os.Open(rdfPath + "/" + graph + "/" + taxon + ".nt")
+	f, err := os.Open(rdfPath + "/" + graph + "/" + taxon + ".nt.gz")
 	if err != nil {
 		fmt.Print("Error opening file: ", err)
 	}
 	defer f.Close()
 	// protDB := client.Database("metadb").Collection("prot")
 	lineNumber := 0
-	scanner := bufio.NewScanner(f)
+	gzReader, err := gzip.NewReader(f)
+	if err != nil {
+		fmt.Print("Failed to create gzip reader.")
+	}
+	defer gzReader.Close()
+
+	scanner := bufio.NewScanner(gzReader)
 	entityMap := make(map[string]Entity)
 
 	for scanner.Scan() {
@@ -332,7 +339,7 @@ func parseEntityRDF(taxon string, graph string, prefix string, rdfPath string, r
 }
 
 func parseStatementRDF(taxon string, graph string, prefix string, rdfPath string, client *mongo.Client) {
-	f, err := os.Open(rdfPath + "/" + graph + "/" + taxon + ".nt")
+	f, err := os.Open(rdfPath + "/" + graph + "/" + taxon + ".nt.gz")
 	if err != nil {
 		fmt.Print("Error opening file: ", err)
 	}
@@ -436,9 +443,9 @@ func parseStatementRDF(taxon string, graph string, prefix string, rdfPath string
 }
 
 func parseStatementRefScore(taxon string, graph string, prefix string, rdfPath string, refScores map[string]int) {
-	f, err := os.Open(rdfPath + "/" + graph + "/" + taxon + ".nt")
+	f, err := os.Open(rdfPath + "/" + graph + "/" + taxon + ".nt.gz")
 	if err != nil {
-		fmt.Print("Error opening file: ", err)
+		fmt.Println("Error opening file: ", err)
 	}
 	defer f.Close()
 	// protDB := client.Database("metadb").Collection("prot")
@@ -470,7 +477,7 @@ func parseStatementRefScore(taxon string, graph string, prefix string, rdfPath s
 func parseGeneOntology(rdfPath string, refScores map[string]int, client *mongo.Client) {
 	oboDefinitionRT := "<http://purl.obolibrary.org/obo/IAO_0000115>"
 
-	f, err := os.Open(rdfPath + "/go/go-basic.nt")
+	f, err := os.Open(rdfPath + "/go/go-basic.nt.gz")
 	if err != nil {
 		fmt.Print("Error opening file: ", err)
 	}
@@ -550,7 +557,7 @@ func parseGeneOntology(rdfPath string, refScores map[string]int, client *mongo.C
 }
 
 func parseDiseases(rdfPath string, refScores map[string]int, client *mongo.Client) {
-	f, err := os.Open(rdfPath + "/omim/omim.nt")
+	f, err := os.Open(rdfPath + "/omim/omim.nt.gz")
 	if err != nil {
 		fmt.Print("Error opening file: ", err)
 	}
