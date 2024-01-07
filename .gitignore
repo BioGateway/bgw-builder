@@ -2,9 +2,11 @@
 /rdf/
 /db/
 /uploads/
+/vos/
 /bgw-*/
 /target/
 biogateway-*.tgz
 build.log
 /metadb-go
 /go.sum
+/dump/

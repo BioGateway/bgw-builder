@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -68,6 +69,7 @@ var statementSubject = "<http://www.w3.org/1999/02/22-rdf-syntax-ns#subject>"
 var taxonPrefix = "http://purl.obolibrary.org/obo/NCBITaxon_"
 
 var threadCount = 10
+var printLineNumber = 50000
 
 // altLabelRT := "http://www.w3.org/2004/02/skos/core#altLabel"
 var classURI = "<http://www.w3.org/2002/07/owl#Class>"
@@ -132,6 +134,7 @@ func main() {
 		fmt.Println("Parsing RDFs for taxon", taxon)
 		parseEntityRDF(taxon, "prot", "http://uniprot.org/uniprot/", rdfPath, refScores, client)
 		parseEntityRDF(taxon, "gene", "http://rdf.biogateway.eu/gene", rdfPath, refScores, client)
+		// parseEntityRDF(taxon, "crm", "http://rdf.biogateway.eu/crm", rdfPath, refScores, client)
 
 		parseStatementRefScore(taxon, "prot2bp", "http://rdf.biogateway.eu/prot-onto/", rdfPath, refScores)
 		parseStatementRefScore(taxon, "prot2cc", "http://rdf.biogateway.eu/prot-onto/", rdfPath, refScores)
@@ -153,14 +156,15 @@ func main() {
 func parseEntityRDF(taxon string, graph string, prefix string, rdfPath string, refScores map[string]int, client *mongo.Client) {
 	f, err := os.Open(rdfPath + "/" + graph + "/" + taxon + ".nt.gz")
 	if err != nil {
-		fmt.Print("Error opening file: ", err)
+		fmt.Println("Error opening file: ", err)
+		return
 	}
 	defer f.Close()
 	// protDB := client.Database("metadb").Collection("prot")
 	lineNumber := 0
 	gzReader, err := gzip.NewReader(f)
 	if err != nil {
-		fmt.Print("Failed to create gzip reader.")
+		panic("Failed to create gzip reader: " + err.Error())
 	}
 	defer gzReader.Close()
 
@@ -286,7 +290,7 @@ func parseEntityRDF(taxon string, graph string, prefix string, rdfPath string, r
 			}
 		}
 
-		if lineNumber%1000 == 0 {
+		if lineNumber%printLineNumber == 0 {
 			fmt.Printf("[%s][%s] Parsed line number %d\n", taxon, graph, lineNumber)
 		}
 	}
@@ -339,118 +343,140 @@ func parseEntityRDF(taxon string, graph string, prefix string, rdfPath string, r
 }
 
 func parseStatementRDF(taxon string, graph string, prefix string, rdfPath string, client *mongo.Client) {
-	f, err := os.Open(rdfPath + "/" + graph + "/" + taxon + ".nt.gz")
+	pattern := rdfPath + "/" + graph + "/*" + taxon + ".nt.gz"
+	files, err := filepath.Glob(pattern)
 	if err != nil {
-		fmt.Print("Error opening file: ", err)
+		fmt.Println("Error matching files:", err)
+		return
 	}
-	defer f.Close()
-	// protDB := client.Database("metadb").Collection("prot")
-	lineNumber := 0
-	scanner := bufio.NewScanner(f)
-	statementMap := make(map[string]Statement)
+	for _, filePath := range files {
+		fmt.Println("Processing file:", filePath)
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		lineNumber++
-		components := strings.SplitN(line, " ", 3)
-		sub := components[0]
-		predicate := components[1]
-		value := cleanRDFString(components[2])
+		f, err := os.Open(filePath)
+		if err != nil {
+			fmt.Println("Error opening file: ", err)
+			return
+		}
+		defer f.Close()
+		lineNumber := 0
 
-		uri := removeLTGT(sub)
-		if !strings.HasPrefix(uri, prefix) {
-			continue
+		gzReader, err := gzip.NewReader(f)
+		if err != nil {
+			panic("Failed to create gzip reader: " + err.Error())
 		}
-		if predicate == prefLabelRT {
-			if entry, ok := statementMap[uri]; ok {
-				entry.prefLabel = value
-				entry.lcLabel = strings.ToLower(value)
-				statementMap[uri] = entry
-			} else {
-				statementMap[uri] = Statement{
-					uri:       uri,
-					prefLabel: value,
-					lcLabel:   strings.ToLower(value),
-				}
-			}
-		} else if predicate == definitionRT {
-			if entry, ok := statementMap[uri]; ok {
-				entry.definition = value
-				statementMap[uri] = entry
-			} else {
-				statementMap[uri] = Statement{
-					uri:        uri,
-					definition: value}
-			}
-		} else if predicate == statementPredicate {
-			if entry, ok := statementMap[uri]; ok {
-				entry.predicate = removeLTGT(value)
-				statementMap[uri] = entry
-			} else {
-				statementMap[uri] = Statement{
-					uri:       uri,
-					predicate: removeLTGT(value)}
-			}
-		} else if predicate == statementObject {
-			if entry, ok := statementMap[uri]; ok {
-				entry.object = removeLTGT(value)
-				statementMap[uri] = entry
-			} else {
-				statementMap[uri] = Statement{
-					uri:    uri,
-					object: removeLTGT(value)}
-			}
-		} else if predicate == statementSubject {
-			if entry, ok := statementMap[uri]; ok {
-				entry.subject = removeLTGT(value)
-				statementMap[uri] = entry
-			} else {
-				statementMap[uri] = Statement{
-					uri:     uri,
-					subject: removeLTGT(value)}
-			}
-		}
-		if lineNumber%1000 == 0 {
-			fmt.Printf("[%s][%s] Parsed line number %d\n", taxon, graph, lineNumber)
-		}
-	}
-	entitiesPerThread := (len(statementMap) / threadCount) + 1
-	entities := make([][]Statement, threadCount)
+		defer gzReader.Close()
+		scanner := bufio.NewScanner(gzReader)
 
-	for index, _ := range entities {
-		entities[index] = make([]Statement, entitiesPerThread)
-		i := 0
-		for key, statement := range statementMap {
-			if i > entitiesPerThread-1 {
+		statementMap := make(map[string]Statement)
+
+		for scanner.Scan() {
+			line := scanner.Text()
+			lineNumber++
+			components := strings.SplitN(line, " ", 3)
+			sub := components[0]
+			predicate := components[1]
+			value := cleanRDFString(components[2])
+
+			uri := removeLTGT(sub)
+			if !strings.HasPrefix(uri, prefix) {
 				continue
 			}
-			entities[index][i] = statement
-			delete(statementMap, key)
-			i++
+			if predicate == prefLabelRT {
+				if entry, ok := statementMap[uri]; ok {
+					entry.prefLabel = value
+					entry.lcLabel = strings.ToLower(value)
+					statementMap[uri] = entry
+				} else {
+					statementMap[uri] = Statement{
+						uri:       uri,
+						prefLabel: value,
+						lcLabel:   strings.ToLower(value),
+					}
+				}
+			} else if predicate == definitionRT {
+				if entry, ok := statementMap[uri]; ok {
+					entry.definition = value
+					statementMap[uri] = entry
+				} else {
+					statementMap[uri] = Statement{
+						uri:        uri,
+						definition: value}
+				}
+			} else if predicate == statementPredicate {
+				if entry, ok := statementMap[uri]; ok {
+					entry.predicate = removeLTGT(value)
+					statementMap[uri] = entry
+				} else {
+					statementMap[uri] = Statement{
+						uri:       uri,
+						predicate: removeLTGT(value)}
+				}
+			} else if predicate == statementObject {
+				if entry, ok := statementMap[uri]; ok {
+					entry.object = removeLTGT(value)
+					statementMap[uri] = entry
+				} else {
+					statementMap[uri] = Statement{
+						uri:    uri,
+						object: removeLTGT(value)}
+				}
+			} else if predicate == statementSubject {
+				if entry, ok := statementMap[uri]; ok {
+					entry.subject = removeLTGT(value)
+					statementMap[uri] = entry
+				} else {
+					statementMap[uri] = Statement{
+						uri:     uri,
+						subject: removeLTGT(value)}
+				}
+			}
+			if lineNumber%printLineNumber == 0 {
+				fmt.Printf("[%s][%s] Parsed line number %d\n", taxon, graph, lineNumber)
+			}
 		}
-	}
+		entitiesPerThread := (len(statementMap) / threadCount) + 1
+		entities := make([][]Statement, threadCount)
 
-	var waitGroup sync.WaitGroup
-	waitGroup.Add(threadCount)
+		for index, _ := range entities {
+			entities[index] = make([]Statement, entitiesPerThread)
+			i := 0
+			for key, statement := range statementMap {
+				if i > entitiesPerThread-1 {
+					continue
+				}
+				entities[index][i] = statement
+				delete(statementMap, key)
+				i++
+			}
+		}
 
-	for index, list := range entities {
-		go func(i int, list []Statement) {
-			defer waitGroup.Done()
-			insertStatementsToDB(list, client, i, graph, taxon)
-		}(index, list)
+		var waitGroup sync.WaitGroup
+		waitGroup.Add(threadCount)
+
+		for index, list := range entities {
+			go func(i int, list []Statement) {
+				defer waitGroup.Done()
+				insertStatementsToDB(list, client, i, graph, taxon)
+			}(index, list)
+		}
+		waitGroup.Wait()
 	}
-	waitGroup.Wait()
 }
 
 func parseStatementRefScore(taxon string, graph string, prefix string, rdfPath string, refScores map[string]int) {
 	f, err := os.Open(rdfPath + "/" + graph + "/" + taxon + ".nt.gz")
 	if err != nil {
 		fmt.Println("Error opening file: ", err)
+		return
 	}
-	defer f.Close()
-	// protDB := client.Database("metadb").Collection("prot")
+
 	lineNumber := 0
-	scanner := bufio.NewScanner(f)
+	gzReader, err := gzip.NewReader(f)
+	if err != nil {
+		panic("Failed to create gzip reader: " + err.Error())
+	}
+	defer gzReader.Close()
+	scanner := bufio.NewScanner(gzReader)
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -468,7 +494,7 @@ func parseStatementRefScore(taxon string, graph string, prefix string, rdfPath s
 			object := removeLTGT(value)
 			refScores[object] += 1
 		}
-		if lineNumber%1000 == 0 {
+		if lineNumber%printLineNumber == 0 {
 			fmt.Printf("[%s][%s] Parsed line number %d\n", taxon, graph, lineNumber)
 		}
 	}
@@ -479,11 +505,19 @@ func parseGeneOntology(rdfPath string, refScores map[string]int, client *mongo.C
 
 	f, err := os.Open(rdfPath + "/go/go-basic.nt.gz")
 	if err != nil {
-		fmt.Print("Error opening file: ", err)
+		// fmt.Print("Error opening file: ", err)
+		panic("Error opening /go/go-basic.nt.gz: " + err.Error())
 	}
 	defer f.Close()
 	lineNumber := 0
-	scanner := bufio.NewScanner(f)
+
+	gzReader, err := gzip.NewReader(f)
+	if err != nil {
+		panic("Failed to create gzip reader: " + err.Error())
+	}
+	defer gzReader.Close()
+	scanner := bufio.NewScanner(gzReader)
+
 	entityMap := make(map[string]SimpleEntity)
 
 	for scanner.Scan() {
@@ -523,7 +557,7 @@ func parseGeneOntology(rdfPath string, refScores map[string]int, client *mongo.C
 					definition: value}
 			}
 		}
-		if lineNumber%1000 == 0 {
+		if lineNumber%printLineNumber == 0 {
 			fmt.Println("[GeneOntology] Parsed line number", lineNumber)
 		}
 	}
@@ -559,11 +593,19 @@ func parseGeneOntology(rdfPath string, refScores map[string]int, client *mongo.C
 func parseDiseases(rdfPath string, refScores map[string]int, client *mongo.Client) {
 	f, err := os.Open(rdfPath + "/omim/omim.nt.gz")
 	if err != nil {
-		fmt.Print("Error opening file: ", err)
+		fmt.Println("Error opening file: ", err)
+		return
 	}
 	defer f.Close()
 	lineNumber := 0
-	scanner := bufio.NewScanner(f)
+
+	gzReader, err := gzip.NewReader(f)
+	if err != nil {
+		panic("Failed to create gzip reader: " + err.Error())
+	}
+	defer gzReader.Close()
+	scanner := bufio.NewScanner(gzReader)
+
 	entityMap := make(map[string]SimpleEntity)
 
 	for scanner.Scan() {
@@ -595,7 +637,7 @@ func parseDiseases(rdfPath string, refScores map[string]int, client *mongo.Clien
 				}
 			}
 		}
-		if lineNumber%1000 == 0 {
+		if lineNumber%printLineNumber == 0 {
 			fmt.Println("[Omim] Parsed line number", lineNumber)
 		}
 	}
@@ -722,7 +764,7 @@ func insertSimpleEntitiesToDB(entities []SimpleEntity, client *mongo.Client, ind
 		if err != nil {
 			panic(err)
 		}
-		if entityNumber%1000 == 0 {
+		if entityNumber%10000 == 0 {
 			nowTime := time.Now().Unix()
 			duration := nowTime - timestamp
 			timestamp = nowTime
@@ -805,7 +847,7 @@ func insertEntitiesToDB(entities []Entity, client *mongo.Client, index int, grap
 		if err != nil {
 			panic(err)
 		}
-		if entityNumber%1000 == 0 {
+		if entityNumber%10000 == 0 {
 			nowTime := time.Now().Unix()
 			duration := nowTime - timestamp
 			timestamp = nowTime
