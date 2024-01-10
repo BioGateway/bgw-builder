@@ -11,7 +11,7 @@ sudo rm -r bgw-*/
 docker compose up -d
 
 mkdir -p target/
-cp -r $2 target/vos &
+(cp -r "$2" target/vos && echo "Copy complete!") &
 vospath="$2"
 vospath="${vospath%/}"
 
