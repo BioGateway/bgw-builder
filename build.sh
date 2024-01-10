@@ -20,12 +20,13 @@ docker compose down
 sudo cp -r db/ target/metadb
 sudo chown -R $USER:docker target/
 sudo chmod -R g+rw target/
-echo "MetaDB build complete!"
 
 sed 's/#version#/'$1'/' docker-template.yml > target/docker-compose.yml
 
 mv target/ bgw-$1
-echo "Packaging..."
+echo "MetaDB build complete!"
 
-tar cvf - bgw-$1/ | pigz > biogateway-$1.tgz
-echo "Tarball complete!"
+# echo "Packaging..."
+
+# tar cvf - bgw-$1/ | pigz > biogateway-$1.tgz
+# echo "Tarball complete!"
