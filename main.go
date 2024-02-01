@@ -503,7 +503,7 @@ func parseStatementRefScore(taxon string, graph string, prefix string, rdfPath s
 func parseGeneOntology(rdfPath string, refScores map[string]int, client *mongo.Client) {
 	oboDefinitionRT := "<http://purl.obolibrary.org/obo/IAO_0000115>"
 
-	f, err := os.Open(rdfPath + "/go/go-basic.nt.gz")
+	f, err := os.Open(rdfPath + "/onto/go-basic.nt.gz")
 	if err != nil {
 		// fmt.Print("Error opening file: ", err)
 		panic("Error opening /go/go-basic.nt.gz: " + err.Error())
@@ -591,7 +591,7 @@ func parseGeneOntology(rdfPath string, refScores map[string]int, client *mongo.C
 }
 
 func parseDiseases(rdfPath string, refScores map[string]int, client *mongo.Client) {
-	f, err := os.Open(rdfPath + "/omim/omim.nt.gz")
+	f, err := os.Open(rdfPath + "/onto/omim.nt.gz")
 	if err != nil {
 		fmt.Println("Error opening file: ", err)
 		return
