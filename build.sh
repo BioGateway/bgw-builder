@@ -25,7 +25,7 @@ echo "Copy started with PID ${COPY_PID}"
 vospath="$2"
 vospath="${vospath%/}"
 ./metadb-go -path=$vospath/uploads -t=$3
-
+echo "Please wait for copy to finish."
 # Wait for the copy operation to complete
 wait $COPY_PID
 
@@ -41,4 +41,4 @@ sudo chmod -R g+rw target/
 sed 's/#version#/'$1'/' docker-template.yml > target/docker-compose.yml
 mv target/ bgw-$1
 
-echo "MetaDB build complete!"
+echo "BioGateway build complete!"

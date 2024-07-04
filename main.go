@@ -150,7 +150,7 @@ func main() {
 	// Depends on parsing prot2bp, prot2cc and prot2mf first, to get accurate refScores.
 	parseGeneOntology(rdfPath, refScores, client)
 
-	fmt.Printf("Done!")
+	fmt.Printf("MetaDB Build completed...")
 }
 
 func parseEntityRDF(taxon string, graph string, prefix string, rdfPath string, refScores map[string]int, client *mongo.Client) {
