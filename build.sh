@@ -19,6 +19,7 @@ mkdir -p target/
 # Start the copy operation in the background
 cp -r "$2" target/vos && echo "Copy complete!" &
 COPY_PID=$!  # Save the PID of the last background process
+echo "Copy started with PID ${COPY_PID}"
 
 # Execute metadb-go in parallel to copying
 vospath="$2"
